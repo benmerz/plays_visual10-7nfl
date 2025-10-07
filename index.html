@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Play Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        canvas {
+            background: #166534; /* Green-700 */
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-6xl bg-gray-800 rounded-lg shadow-xl p-6">
+        <h1 class="text-3xl font-bold text-center text-white mb-4">Football Formation Visualizer</h1>
+        
+        <!-- Controls -->
+        <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mb-4">
+            <div class="w-full sm:w-auto">
+                <label for="offense-select" class="block text-sm font-medium text-gray-300 mb-1">Offense</label>
+                <select id="offense-select" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5">
+                    <option selected>Select Formation</option>
+                </select>
+            </div>
+            <div class="w-full sm:w-auto">
+                <label for="defense-select" class="block text-sm font-medium text-gray-300 mb-1">Defense</label>
+                <select id="defense-select" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5">
+                    <option selected>Select Formation</option>
+                </select>
+            </div>
+        </div>
+
+       <!-- Canvas Container -->
+       <div id="field-container" class="w-full bg-gray-900 rounded-md overflow-hidden border-4 border-gray-700">
+           <canvas id="football-field" class="w-full h-full"></canvas>
+       </div>
+    </div>
+
+    <script>
+        const offenseFormations = {
+          "I-Form": [
+            {"position": "C", "x": 50, "y": 1},
+            {"position": "LG", "x": 47, "y": 1},
+            {"position": "RG", "x": 53, "y": 1},
+            {"position": "LT", "x": 44, "y": 1},
+            {"position": "RT", "x": 56, "y": 1},
+            {"position": "TE", "x": 59, "y": 1.5},
+            {"position": "WR", "x": 10, "y": 1.5},
+            {"position": "QB", "x": 50, "y": 3},
+            {"position": "FB", "x": 50, "y": 5},
+            {"position": "HB", "x": 50, "y": 8},
+            {"position": "WR", "x": 90, "y": 1.5}
+          ],
+          "Shotgun": [
+            {"position": "C", "x": 50, "y": 1},
+            {"position": "LG", "x": 47, "y": 1},
+            {"position": "RG", "x": 53, "y": 1},
+            {"position": "LT", "x": 44, "y": 1},
+            {"position": "RT", "x": 56, "y": 1},
+            {"position": "WR", "x": 65, "y": 1.5},
+            {"position": "WR", "x": 10, "y": 1.5},
+            {"position": "QB", "x": 50, "y": 6},
+            {"position": "RB", "x": 55, "y": 6},
+            {"position": "WR", "x": 35, "y": 1.5},
+            {"position": "WR", "x": 90, "y": 1.5}
+          ],
+          "Pistol": [
+            {"position": "C", "x": 50, "y": 1},
+            {"position": "LG", "x": 47, "y": 1},
+            {"position": "RG", "x": 53, "y": 1},
+            {"position": "LT", "x": 44, "y": 1},
+            {"position": "RT", "x": 56, "y": 1},
+            {"position": "TE", "x": 59, "y": 1.5},
+            {"position": "WR", "x": 15, "y": 1.5},
+            {"position": "QB", "x": 50, "y": 4},
+            {"position": "HB", "x": 50, "y": 7},
+            {"position": "TE", "x": 41, "y": 1.5},
+            {"position": "WR", "x": 85, "y": 1.5}
+          ]
+        };
+
+        const defenseFormations = {
+          "4-3": [
+            {"position": "DT", "x": 48, "y": 1.5},
+            {"position": "DT", "x": 52, "y": 1.5},
+            {"position": "DE", "x": 42, "y": 1.5},
+            {"position": "DE", "x": 60, "y": 1.5},
+            {"position": "MLB", "x": 50, "y": 5},
+            {"position": "OLB", "x": 38, "y": 6},
+            {"position": "OLB", "x": 62, "y": 6},
+            {"position": "CB", "x": 10, "y": 8},
+            {"position": "CB", "x": 90, "y": 8},
+            {"position": "FS", "x": 35, "y": 12},
+            {"position": "SS", "x": 65, "y": 10}
+          ],
+          "3-4": [
+            {"position": "NT", "x": 50, "y": 1.5},
+            {"position": "DE", "x": 45, "y": 1.5},
+            {"position": "DE", "x": 55, "y": 1.5},
+            {"position": "ILB", "x": 47, "y": 5},
+            {"position": "ILB", "x": 53, "y": 5},
+            {"position": "OLB", "x": 38, "y": 2},
+            {"position": "OLB", "x": 62, "y": 2},
+            {"position": "CB", "x": 15, "y": 8},
+            {"position": "CB", "x": 85, "y": 8},
+            {"position": "FS", "x": 50, "y": 13},
+            {"position": "SS", "x": 60, "y": 10}
+          ],
+          "Nickel": [
+            {"position": "DT", "x": 48, "y": 1.5},
+            {"position": "DT", "x": 52, "y": 1.5},
+            {"position": "DE", "x": 42, "y": 1.5},
+            {"position": "DE", "x": 58, "y": 1.5},
+            {"position": "LB", "x": 45, "y": 5},
+            {"position": "LB", "x": 55, "y": 5},
+            {"position": "CB", "x": 10, "y": 8},
+            {"position": "CB", "x": 90, "y": 8},
+            {"position": "NCB", "x": 65, "y": 1},
+            {"position": "FS", "x": 30, "y": 12},
+            {"position": "SS", "x": 70, "y": 12}
+          ]
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('football-field');
+            const ctx = canvas.getContext('2d');
+
+            const offenseSelect = document.getElementById('offense-select');
+            const defenseSelect = document.getElementById('defense-select');
+
+            // --- Constants ---
+            const YARD_TO_PIXEL = 18;
+            const FIELD_WIDTH_YARDS = 53.3; // Standard width
+            const FIELD_HEIGHT_YARDS = 55; // 50 yards + endzone space
+            const LINE_OF_SCRIMMAGE_Y = 25; // in yards, from the top
+
+            // --- Canvas Setup ---
+            // We'll size the canvas to fit the available viewport space so the page doesn't need to scroll.
+            const wrapper = document.querySelector('.max-w-6xl');
+            const header = wrapper.querySelector('h1');
+            const controlsRow = wrapper.querySelector('.flex.flex-col');
+            const canvasContainer = document.getElementById('field-container');
+
+            function resizeCanvasToViewport() {
+                // Measure available vertical space below the top of the card wrapper
+                const wrapperStyles = window.getComputedStyle(wrapper);
+                const wrapperPaddingTop = parseFloat(wrapperStyles.paddingTop) || 0;
+                const wrapperPaddingBottom = parseFloat(wrapperStyles.paddingBottom) || 0;
+
+                const usedHeight = header.getBoundingClientRect().height + (controlsRow ? controlsRow.getBoundingClientRect().height : 0) + wrapperPaddingTop + wrapperPaddingBottom + 48; // extra spacing
+                let availableHeight = Math.max(180, window.innerHeight - wrapper.getBoundingClientRect().top - usedHeight);
+
+                // Measure available width inside the wrapper
+                const wrapperInnerWidth = wrapper.clientWidth;
+
+                // Maintain field aspect ratio based on yards
+                const fieldAspect = FIELD_WIDTH_YARDS / FIELD_HEIGHT_YARDS;
+
+                // Start from height-limited size, then constrain by width if needed
+                let canvasHeight = Math.round(availableHeight);
+                let canvasWidth = Math.round(canvasHeight * fieldAspect);
+
+                // If the computed width exceeds wrapper width, fit by width instead
+                const maxCanvasWidth = Math.max(200, wrapperInnerWidth - 32); // account for some padding
+                if (canvasWidth > maxCanvasWidth) {
+                    canvasWidth = Math.round(maxCanvasWidth);
+                    canvasHeight = Math.round(canvasWidth / fieldAspect);
+                }
+
+                // Apply pixel size to canvas and CSS size to container
+                const scale = window.devicePixelRatio || 1;
+                canvas.width = canvasWidth * scale;
+                canvas.height = canvasHeight * scale;
+                // CSS size (logical pixels)
+                canvas.style.width = canvasWidth + 'px';
+                canvas.style.height = canvasHeight + 'px';
+
+                // Scale drawing for devicePixelRatio
+                ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+                // Ensure container matches the canvas CSS size to avoid page overflow and center canvas
+                canvasContainer.style.height = canvasHeight + 'px';
+                canvasContainer.style.display = 'flex';
+                canvasContainer.style.justifyContent = 'center';
+                canvasContainer.style.alignItems = 'center';
+
+                drawFormations();
+            }
+            
+            // --- Populate Dropdowns ---
+            Object.keys(offenseFormations).forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                offenseSelect.appendChild(option);
+            });
+             Object.keys(defenseFormations).forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                defenseSelect.appendChild(option);
+            });
+
+            // --- Drawing Functions ---
+            function drawField() {
+                // Use client sizes (CSS pixels) so drawing scales correctly with the visible canvas
+                const cw = canvas.clientWidth;
+                const ch = canvas.clientHeight;
+                ctx.clearRect(0, 0, cw, ch);
+
+                // Compute yards -> CSS-pixels dynamically so the entire field scales to fit
+                const yardToPx = ch / FIELD_HEIGHT_YARDS;
+
+                // Field color is set via CSS
+
+                // Yard lines
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.lineWidth = Math.max(1, yardToPx * 0.06);
+                for (let y = 0; y <= 50; y += 5) {
+                    const yPos = (LINE_OF_SCRIMMAGE_Y - y) * yardToPx;
+                    const yPosUp = (LINE_OF_SCRIMMAGE_Y + y) * yardToPx;
+
+                    if (y !== 0) { // Don't draw over the line of scrimmage
+                        [yPos, yPosUp].forEach(pos => {
+                            ctx.beginPath();
+                            ctx.moveTo(0, pos);
+                            ctx.lineTo(cw, pos);
+                            ctx.stroke();
+                        });
+                    }
+
+                    // Yard numbers
+                    if (y > 0 && y % 10 === 0) {
+                        ctx.font = `bold ${Math.max(10, yardToPx * 1.2)}px Arial`;
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                        ctx.textAlign = 'center';
+                        // Numbers on defensive side
+                        ctx.fillText(y, cw * 0.1, yPos + (yardToPx * 1.5));
+                        ctx.fillText(y, cw * 0.9, yPos + (yardToPx * 1.5));
+                        // Numbers on offensive side
+                        ctx.fillText(y, cw * 0.1, yPosUp - (yardToPx * 0.5));
+                        ctx.fillText(y, cw * 0.9, yPosUp - (yardToPx * 0.5));
+                    }
+                }
+
+                // Line of Scrimmage
+                ctx.strokeStyle = '#3b82f6'; // blue-500
+                ctx.lineWidth = Math.max(2, yardToPx * 0.15);
+                ctx.beginPath();
+                ctx.moveTo(0, LINE_OF_SCRIMMAGE_Y * yardToPx);
+                ctx.lineTo(cw, LINE_OF_SCRIMMAGE_Y * yardToPx);
+                ctx.stroke();
+            }
+            
+            function drawPlayer(player, isOffense) {
+                // Use clientWidth/Height (CSS pixels) so positioning matches visible canvas
+                const cw = canvas.clientWidth;
+                const ch = canvas.clientHeight;
+
+                // Convert formation coordinates (x: 0-100, y: yards from LOS) to canvas pixels
+                const canvasX = (player.x / 100) * cw;
+                const losPixelY = LINE_OF_SCRIMMAGE_Y * (ch / FIELD_HEIGHT_YARDS);
+                const yardToPx = ch / FIELD_HEIGHT_YARDS;
+                const canvasY = isOffense
+                    ? losPixelY + (player.y * yardToPx)
+                    : losPixelY - (player.y * yardToPx);
+
+                const radius = Math.max(6, yardToPx * 0.6);
+
+                // Draw circle
+                ctx.beginPath();
+                ctx.arc(canvasX, canvasY, radius, 0, Math.PI * 2);
+                ctx.fillStyle = isOffense ? '#2563eb' : '#dc2626'; // blue-600 vs red-600
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = Math.max(1, yardToPx * 0.07);
+                ctx.stroke();
+
+                // Draw position text
+                ctx.font = `bold ${Math.max(8, yardToPx * 0.5)}px Inter`;
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(player.position, canvasX, canvasY);
+            }
+
+            function drawFormations() {
+                drawField();
+                
+                const selectedOffense = offenseSelect.value;
+                const selectedDefense = defenseSelect.value;
+
+                if (offenseFormations[selectedOffense]) {
+                    offenseFormations[selectedOffense].forEach(player => drawPlayer(player, true));
+                }
+                
+                if (defenseFormations[selectedDefense]) {
+                    defenseFormations[selectedDefense].forEach(player => drawPlayer(player, false));
+                }
+            }
+            
+            // --- Event Listeners ---
+            offenseSelect.addEventListener('change', drawFormations);
+            defenseSelect.addEventListener('change', drawFormations);
+            window.addEventListener('resize', () => {
+                resizeCanvasToViewport();
+            });
+
+            // Initial sizing and draw
+            resizeCanvasToViewport();
+        });
+    </script>
+</body>
+</html>
+
