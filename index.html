@@ -30,6 +30,15 @@
                 </select>
             </div>
             <div class="w-full sm:w-auto">
+                <label for="play-select" class="block text-sm font-medium text-gray-300 mb-1">Play</label>
+                <select id="play-select" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5">
+                    <option selected>Select Play</option>
+                </select>
+            </div>
+            <div class="w-full sm:w-auto flex items-end">
+                <button id="play-button" class="bg-blue-600 text-white px-4 py-2 rounded-lg">Play</button>
+            </div>
+            <div class="w-full sm:w-auto">
                 <label for="defense-select" class="block text-sm font-medium text-gray-300 mb-1">Defense</label>
                 <select id="defense-select" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5">
                     <option selected>Select Formation</option>
@@ -133,13 +142,71 @@
             const ctx = canvas.getContext('2d');
 
             const offenseSelect = document.getElementById('offense-select');
+            const playSelect = document.getElementById('play-select');
             const defenseSelect = document.getElementById('defense-select');
 
+            // --- Sample plays (minimal, illustrative) ---
+            // Each route uses absolute coordinates matching the formation/player coordinates
+            // x: 0..100 across, y: yards from LOS
+            const playsByFormation = {
+                'I-Form': [
+                    {
+                        name: 'Flood Right',
+                        routes: [
+                            // left WR (x:10) - quick out
+                            {startX:10, startY:1.5, path:[{x:20,y:1.5},{x:30,y:6}]},
+                            // TE (x:59) - seam
+                            {startX:59, startY:1.5, path:[{x:59,y:8},{x:59,y:18}]},
+                            // Right WR (x:90) - deep corner
+                            {startX:90, startY:1.5, path:[{x:82,y:10},{x:72,y:20}]},
+                            // FB blocking
+                            {startX:50, startY:5, action:'block'},
+                            // HB run (check)
+                            {startX:50, startY:8, path:[{x:50,y:12}]}
+                        ]
+                    },
+                    {
+                        name: 'Play Action Left',
+                        routes: [
+                            {startX:90, startY:1.5, path:[{x:80,y:6},{x:70,y:14}]},
+                            {startX:10, startY:1.5, path:[{x:18,y:6},{x:28,y:12}]},
+                            {startX:59, startY:1.5, action:'block'},
+                            {startX:50, startY:5, action:'block'}
+                        ]
+                    }
+                ],
+                'Shotgun': [
+                    {
+                        name: 'Four Verticals',
+                        routes: [
+                            {startX:10, startY:1.5, path:[{x:10,y:30}]},
+                            {startX:35, startY:1.5, path:[{x:35,y:30}]},
+                            {startX:65, startY:1.5, path:[{x:65,y:30}]},
+                            {startX:90, startY:1.5, path:[{x:90,y:30}]},
+                            {startX:50, startY:6, action:'block'}
+                        ]
+                    }
+                ],
+                'Pistol': [
+                    {
+                        name: 'Misdirection Counter',
+                        routes: [
+                            {startX:15, startY:1.5, action:'block'},
+                            {startX:85, startY:1.5, path:[{x:75,y:10}]},
+                            {startX:41, startY:1.5, path:[{x:35,y:8}]},
+                            {startX:50, startY:4, path:[{x:52,y:14}]},
+                            {startX:50, startY:7, action:'block'}
+                        ]
+                    }
+                ]
+            };
+
             // --- Constants ---
-            const YARD_TO_PIXEL = 18;
-            const FIELD_WIDTH_YARDS = 53.3; // Standard width
-            const FIELD_HEIGHT_YARDS = 55; // 50 yards + endzone space
-            const LINE_OF_SCRIMMAGE_Y = 25; // in yards, from the top
+            const FIELD_WIDTH_YARDS = 53.3; // Standard width (across)
+            const MAIN_FIELD_YARDS = 50; // 0..50 visible main field (0 at top, 50 at bottom)
+            const ENDZONE_YARDS = 10; // 10-yard endzone above 0
+            const FIELD_HEIGHT_YARDS = MAIN_FIELD_YARDS + ENDZONE_YARDS; // total yards represented vertically
+            const LINE_OF_SCRIMMAGE_Y = 25; // in yards from the 0 line (main field)
 
             // --- Canvas Setup ---
             // We'll size the canvas to fit the available viewport space so the page doesn't need to scroll.
@@ -201,6 +268,21 @@
                 option.textContent = name;
                 offenseSelect.appendChild(option);
             });
+            // populate plays when formation chosen
+            offenseSelect.addEventListener('change', () => {
+                const form = offenseSelect.value;
+                // clear plays
+                playSelect.innerHTML = '<option selected>Select Play</option>';
+                if (playsByFormation[form]) {
+                    playsByFormation[form].forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.name;
+                        opt.textContent = p.name;
+                        playSelect.appendChild(opt);
+                    });
+                }
+                drawFormations();
+            });
              Object.keys(defenseFormations).forEach(name => {
                 const option = document.createElement('option');
                 option.value = name;
@@ -218,59 +300,150 @@
                 // Compute yards -> CSS-pixels dynamically so the entire field scales to fit
                 const yardToPx = ch / FIELD_HEIGHT_YARDS;
 
-                // Field color is set via CSS
+                // Draw endzone at the top: this represents yards -10..0 (ENDZONE_YARDS)
+                const endzoneHeightPx = ENDZONE_YARDS * yardToPx;
+                ctx.fillStyle = '#1e40af'; // blue-800 for endzone
+                ctx.fillRect(0, 0, cw, endzoneHeightPx);
 
-                // Yard lines
+                // Draw main field (green) below the endzone to ensure consistent coloring
+                ctx.fillStyle = '#166534'; // Green-700 to match CSS
+                ctx.fillRect(0, endzoneHeightPx, cw, ch - endzoneHeightPx);
+
+                // Yard lines across the main field from 0 to MAIN_FIELD_YARDS
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
                 ctx.lineWidth = Math.max(1, yardToPx * 0.06);
-                for (let y = 0; y <= 50; y += 5) {
-                    const yPos = (LINE_OF_SCRIMMAGE_Y - y) * yardToPx;
-                    const yPosUp = (LINE_OF_SCRIMMAGE_Y + y) * yardToPx;
+                for (let y = 0; y <= MAIN_FIELD_YARDS; y += 5) {
+                    const pos = (ENDZONE_YARDS + y) * yardToPx; // pixel y for this yard line
 
-                    if (y !== 0) { // Don't draw over the line of scrimmage
-                        [yPos, yPosUp].forEach(pos => {
-                            ctx.beginPath();
-                            ctx.moveTo(0, pos);
-                            ctx.lineTo(cw, pos);
-                            ctx.stroke();
-                        });
+                    // Draw the line (skip drawing a 0-yard line as a full width line if you prefer)
+                    if (y !== 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, pos);
+                        ctx.lineTo(cw, pos);
+                        ctx.stroke();
                     }
 
-                    // Yard numbers
+                    // Yard numbers every 10 yards (split horizontally)
                     if (y > 0 && y % 10 === 0) {
                         ctx.font = `bold ${Math.max(10, yardToPx * 1.2)}px Arial`;
-                        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                        ctx.textAlign = 'center';
-                        // Numbers on defensive side
-                        ctx.fillText(y, cw * 0.1, yPos + (yardToPx * 1.5));
-                        ctx.fillText(y, cw * 0.9, yPos + (yardToPx * 1.5));
-                        // Numbers on offensive side
-                        ctx.fillText(y, cw * 0.1, yPosUp - (yardToPx * 0.5));
-                        ctx.fillText(y, cw * 0.9, yPosUp - (yardToPx * 0.5));
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+
+                        const label = String(y);
+                        // Center the label vertically on the yard line itself
+                        const labelY = pos;
+                        const smallGap = Math.max(6, yardToPx * 0.8);
+
+                        // Draw split digits rotated inward toward the field.
+                        // Left side: rotate clockwise (so digits read inward). Right side: rotate counter-clockwise.
+                        const gap = Math.max(14, yardToPx * 1.0);
+
+                        function drawRotatedDigit(text, x, y, angle) {
+                            ctx.save();
+                            ctx.translate(x, y);
+                            ctx.rotate(angle);
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(text, 0, 0);
+                            ctx.restore();
+                        }
+
+                        function drawSplitLabelRotatedLeft(xCenter) {
+                            // left side: rotate the entire label clockwise (90deg) to read inward
+                            if (label.length === 1) {
+                                drawRotatedDigit(label, xCenter, labelY, Math.PI / 2);
+                            } else if (label.length === 2) {
+                                // Draw the whole string rotated instead of splitting digits
+                                drawRotatedDigit(label, xCenter, labelY, Math.PI / 2);
+                            } else {
+                                drawRotatedDigit(label, xCenter, labelY, Math.PI / 2);
+                            }
+                        }
+
+                        function drawSplitLabelRotatedRight(xCenter) {
+                            // right side: rotate the entire label counter-clockwise (90deg) to read inward
+                            if (label.length === 1) {
+                                drawRotatedDigit(label, xCenter, labelY, -Math.PI / 2);
+                            } else if (label.length === 2) {
+                                // Draw the whole string rotated instead of splitting digits
+                                drawRotatedDigit(label, xCenter, labelY, -Math.PI / 2);
+                            } else {
+                                drawRotatedDigit(label, xCenter, labelY, -Math.PI / 2);
+                            }
+                        }
+
+                        // Left side numbers (rotated inward)
+                        drawSplitLabelRotatedLeft(cw * 0.1);
+                        // Right side numbers (rotated inward)
+                        drawSplitLabelRotatedRight(cw * 0.9);
                     }
                 }
 
-                // Line of Scrimmage
-                ctx.strokeStyle = '#3b82f6'; // blue-500
-                ctx.lineWidth = Math.max(2, yardToPx * 0.15);
+                // Draw the 0-yard line (the line just below the endzone)
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = Math.max(2, yardToPx * 0.12);
+                const zeroLineY = ENDZONE_YARDS * yardToPx;
                 ctx.beginPath();
-                ctx.moveTo(0, LINE_OF_SCRIMMAGE_Y * yardToPx);
-                ctx.lineTo(cw, LINE_OF_SCRIMMAGE_Y * yardToPx);
+                ctx.moveTo(0, zeroLineY);
+                ctx.lineTo(cw, zeroLineY);
+                ctx.stroke();
+
+                // Line of Scrimmage (gray)
+                ctx.strokeStyle = '#9ca3af'; // gray-400
+                ctx.lineWidth = Math.max(2, yardToPx * 0.15);
+                const losPixel = (ENDZONE_YARDS + LINE_OF_SCRIMMAGE_Y) * yardToPx;
+                ctx.beginPath();
+                ctx.moveTo(0, losPixel);
+                ctx.lineTo(cw, losPixel);
                 ctx.stroke();
             }
             
-            function drawPlayer(player, isOffense) {
+            // map to hold temporary animated positions for players keyed by startX-startY
+            const animPositions = new Map();
+
+            function drawPlayer(player, isOffense, idx = null) {
                 // Use clientWidth/Height (CSS pixels) so positioning matches visible canvas
                 const cw = canvas.clientWidth;
                 const ch = canvas.clientHeight;
 
                 // Convert formation coordinates (x: 0-100, y: yards from LOS) to canvas pixels
-                const canvasX = (player.x / 100) * cw;
-                const losPixelY = LINE_OF_SCRIMMAGE_Y * (ch / FIELD_HEIGHT_YARDS);
                 const yardToPx = ch / FIELD_HEIGHT_YARDS;
-                const canvasY = isOffense
+                const losPixelY = (ENDZONE_YARDS + LINE_OF_SCRIMMAGE_Y) * yardToPx;
+
+                // check for animated override for this player
+                const key = idx !== null ? `off-${idx}` : `${player.x}:${player.y}`;
+                let canvasX = (player.x / 100) * cw;
+                let canvasY = isOffense
                     ? losPixelY + (player.y * yardToPx)
                     : losPixelY - (player.y * yardToPx);
+
+                // Try exact key match first
+                let animPos = animPositions.get(key);
+                if (!animPos) {
+                    // Fallback: find nearest animated position by proximity (tolerance in yards and percent)
+                    const tolY = 1.0; // yards
+                    const tolX = 3.0; // percent across field
+                    for (const [k, v] of animPositions.entries()) {
+                        const [kx, ky] = k.split(':').map(Number);
+                        if (Number.isFinite(kx) && Number.isFinite(ky)) {
+                            if (Math.abs(kx - player.x) <= tolX && Math.abs(ky - player.y) <= tolY) {
+                                animPos = v;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (animPos) {
+                    // If the animated position is stored as pixel coords (px/py), use them directly.
+                    if (animPos.px !== undefined && animPos.py !== undefined) {
+                        canvasX = animPos.px;
+                        canvasY = animPos.py;
+                    } else if (animPos.x !== undefined && animPos.y !== undefined) {
+                        // legacy: formation units
+                        canvasX = toCanvasX(animPos.x);
+                        canvasY = toCanvasYFromLOS(animPos.y);
+                    }
+                }
 
                 const radius = Math.max(6, yardToPx * 0.6);
 
@@ -297,17 +470,266 @@
                 const selectedOffense = offenseSelect.value;
                 const selectedDefense = defenseSelect.value;
 
+                // draw routes if a play is selected
+                const selectedPlayName = playSelect.value;
+                let selectedPlay = null;
+                if (selectedOffense && playsByFormation[selectedOffense]) {
+                    selectedPlay = playsByFormation[selectedOffense].find(p => p.name === selectedPlayName);
+                }
+
                 if (offenseFormations[selectedOffense]) {
-                    offenseFormations[selectedOffense].forEach(player => drawPlayer(player, true));
+                    offenseFormations[selectedOffense].forEach((player, i) => drawPlayer(player, true, i));
                 }
                 
                 if (defenseFormations[selectedDefense]) {
                     defenseFormations[selectedDefense].forEach(player => drawPlayer(player, false));
                 }
+
+                if (selectedPlay) {
+                    const assignments = assignRoutes(selectedOffense, selectedPlay.routes);
+                    drawRoutes(selectedPlay.routes, assignments);
+                }
             }
-            
+
+            // assign each route to an offense player with a one-to-one mapping
+            function assignRoutes(formationName, routes) {
+                const offensePlayers = (offenseFormations[formationName] || []).map(p => ({x: p.x, y: p.y}));
+                const assignments = [];
+
+                const tolX = 2.5; // percent across field
+                const tolY = 0.75; // yards
+
+                // keep track of unused player indices
+                const unused = new Set(offensePlayers.map((_, i) => i));
+
+                // first pass: exact-ish matches (within tolerance)
+                routes.forEach(route => assignments.push({route, playerIndex: null}));
+                routes.forEach((route, ri) => {
+                    if (route.action === 'block') return;
+                    for (const i of Array.from(unused)) {
+                        const p = offensePlayers[i];
+                        if (Math.abs(p.x - route.startX) <= tolX && Math.abs(p.y - route.startY) <= tolY) {
+                            assignments[ri].playerIndex = i;
+                            unused.delete(i);
+                            break;
+                        }
+                    }
+                });
+
+                // second pass: greedy nearest for remaining routes
+                routes.forEach((route, ri) => {
+                    if (route.action === 'block') return;
+                    if (assignments[ri].playerIndex !== null) return;
+                    let bestI = null;
+                    let bestD = Infinity;
+                    for (const i of Array.from(unused)) {
+                        const p = offensePlayers[i];
+                        const dx = p.x - route.startX;
+                        const dy = p.y - route.startY;
+                        const d = dx*dx + dy*dy;
+                        if (d < bestD) { bestD = d; bestI = i; }
+                    }
+                    if (bestI !== null) {
+                        assignments[ri].playerIndex = bestI;
+                        unused.delete(bestI);
+                    } else {
+                        assignments[ri].playerIndex = null;
+                    }
+                });
+
+                return assignments;
+            }
+
+            // --- Route drawing ---
+            function toCanvasX(xPercent) {
+                return (xPercent / 100) * canvas.clientWidth;
+            }
+            // Convert yards-from-LOS to canvas Y (pixels) for player positions (offense below LOS)
+            function toCanvasYFromLOS(yYardsFromLOS) {
+                const yardToPx = canvas.clientHeight / FIELD_HEIGHT_YARDS;
+                const losPixel = (ENDZONE_YARDS + LINE_OF_SCRIMMAGE_Y) * yardToPx;
+                return losPixel + (yYardsFromLOS * yardToPx);
+            }
+
+            // Convert a route point's yards to a canvas Y so the route starts at the receiver
+            // and progresses toward the top endzone. This maps the route's startY to the
+            // player's canvas Y and then offsets subsequent points relative to that start.
+            function routeYToPixel(routeStartY, pointY) {
+                const yardToPx = canvas.clientHeight / FIELD_HEIGHT_YARDS;
+                const startPx = toCanvasYFromLOS(routeStartY);
+                return startPx - ((pointY - routeStartY) * yardToPx);
+            }
+
+            function drawRoutes(routes, assignments = []) {
+                const yardToPx = canvas.clientHeight / FIELD_HEIGHT_YARDS;
+                ctx.lineWidth = Math.max(2, yardToPx * 0.12);
+                routes.forEach((route, i) => {
+                    const assign = assignments[i] || {playerIndex: null};
+                    // ignore block actions (do not draw blocking indicator)
+                    if (route.action === 'block') {
+                        return;
+                    }
+
+                    if (!route.path || route.path.length === 0) return;
+                    ctx.strokeStyle = '#f97316'; // orange route color
+                    ctx.beginPath();
+                    // start at receiver center (yards from LOS)
+                    const startXpx = toCanvasX(route.startX);
+                    const startYpx = toCanvasYFromLOS(route.startY);
+                    ctx.moveTo(startXpx, startYpx);
+                    const localPixelPts = [{x: startXpx, y: startYpx}, ...route.path.map(p => ({x: toCanvasX(p.x), y: routeYToPixel(route.startY, p.y)}))];
+                    localPixelPts.forEach(pt => ctx.lineTo(pt.x, pt.y));
+                    ctx.stroke();
+
+                    // draw an arrowhead at the end, aligned to the last segment direction
+                    const lastPt = localPixelPts[localPixelPts.length - 1];
+                    const prevPt = localPixelPts.length > 1 ? localPixelPts[localPixelPts.length - 2] : null;
+                    const ex = lastPt.x;
+                    const ey = lastPt.y;
+                    const ppx = prevPt ? prevPt.x : startXpx;
+                    const ppy = prevPt ? prevPt.y : startYpx;
+                    drawArrowHead(ex, ey, ppx, ppy, yardToPx);
+
+                    // debug: draw small start marker and assigned player index
+                    const sx = toCanvasX(route.startX);
+                    const sy = toCanvasYFromLOS(route.startY);
+                    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                    ctx.beginPath(); ctx.arc(sx, sy, Math.max(3, yardToPx*0.15), 0, Math.PI*2); ctx.fill();
+                    if (assign.playerIndex !== null) {
+                        ctx.fillStyle = 'black';
+                        ctx.font = `${Math.max(8, yardToPx*0.5)}px Arial`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(String(assign.playerIndex), sx, sy);
+                    }
+                });
+            }
+
+            function drawArrowHead(x, y, px, py, yardToPx) {
+                const angle = Math.atan2(y - py, x - px);
+                const size = Math.max(6, yardToPx * 0.6);
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(-size, size * 0.5);
+                ctx.lineTo(-size, -size * 0.5);
+                ctx.closePath();
+                ctx.fillStyle = '#f97316';
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // blocking symbols are intentionally not drawn (user requested to ignore them)
+
+            // --- Play animation ---
+            const playButton = document.getElementById('play-button');
+            let animFrame = null;
+            let animStart = 0;
+            const animDuration = 1500; // ms
+
+            function interpolatePoint(p0, p1, frac) {
+                return {
+                    x: p0.x + (p1.x - p0.x) * frac,
+                    y: p0.y + (p1.y - p0.y) * frac
+                };
+            }
+
+            playButton.addEventListener('click', () => {
+                const selectedOffense = offenseSelect.value;
+                const selectedPlayName = playSelect.value;
+                if (!selectedOffense || !selectedPlayName) return;
+                const selectedPlay = playsByFormation[selectedOffense] && playsByFormation[selectedOffense].find(p => p.name === selectedPlayName);
+                if (!selectedPlay) return;
+
+                // compute one-to-one assignments for routes -> players
+                const assignments = assignRoutes(selectedOffense, selectedPlay.routes);
+                // build segments for each assigned route (in formation units)
+                const segments = selectedPlay.routes
+                    .map((r, ri) => {
+                        if (!r.path || r.path.length === 0) return null;
+                        const pts = [{x: r.startX, y: r.startY}, ...r.path.map(p => ({x: p.x, y: p.y}))];
+                        // compute pixel points for each subsegment using route-relative Y so motion heads to the endzone
+                        const pixelPts = pts.map(pt => ({x: toCanvasX(pt.x), y: routeYToPixel(pts[0].y, pt.y), ox: pt.x, oy: pt.y}));
+                        const lens = [];
+                        let total = 0;
+                        for (let i=1;i<pixelPts.length;i++){
+                            const dx = pixelPts[i].x - pixelPts[i-1].x;
+                            const dy = pixelPts[i].y - pixelPts[i-1].y;
+                            const l = Math.hypot(dx,dy);
+                            lens.push(l);
+                            total += l;
+                        }
+                        const assignment = assignments[ri] || {playerIndex: null};
+                        return {pts, pixelPts, lens, total, startX: r.startX, startY: r.startY, playerIndex: assignment.playerIndex};
+                    })
+                    .filter(s => s !== null);
+
+                if (segments.length === 0) return;
+
+                // start animation
+                animStart = performance.now();
+                animPositions.clear();
+                // initialize animated positions to each route start (in pixel coords) so players begin exactly at the route origin
+                segments.forEach(seg => {
+                    const startPixel = seg.pixelPts[0];
+                    if (seg.playerIndex !== undefined && seg.playerIndex !== null) {
+                        animPositions.set(`off-${seg.playerIndex}`, { px: startPixel.x, py: startPixel.y });
+                    } else {
+                        animPositions.set(`${seg.startX}:${seg.startY}`, { px: startPixel.x, py: startPixel.y });
+                    }
+                });
+                if (animFrame) cancelAnimationFrame(animFrame);
+
+                function step(now){
+                    const t = Math.min(1, (now - animStart) / animDuration);
+                    // update positions
+                    segments.forEach(seg => {
+                        // determine the key used for this segment (match initialization)
+                        const key = (seg.playerIndex !== undefined && seg.playerIndex !== null) ? `off-${seg.playerIndex}` : `${seg.startX}:${seg.startY}`;
+                        if (seg.total === 0) {
+                            const lastPx = seg.pixelPts[seg.pixelPts.length-1];
+                            animPositions.set(key, {px: lastPx.x, py: lastPx.y});
+                            return;
+                        }
+                        const dist = seg.total * t;
+                        let acc = 0;
+                        let idx = 0;
+                        while (idx < seg.lens.length && acc + seg.lens[idx] < dist) {
+                            acc += seg.lens[idx];
+                            idx++;
+                        }
+                        if (idx >= seg.lens.length) {
+                            const lastPx = seg.pixelPts[seg.pixelPts.length-1];
+                            animPositions.set(key, {px: lastPx.x, py: lastPx.y});
+                        } else {
+                            const p0 = seg.pixelPts[idx];
+                            const p1 = seg.pixelPts[idx+1];
+                            const segDist = dist - acc;
+                            const frac = seg.lens[idx] === 0 ? 0 : segDist / seg.lens[idx];
+                            const ip = interpolatePoint(p0,p1,frac);
+                            animPositions.set(key, {px: ip.x, py: ip.y});
+                        }
+                    });
+
+                    drawFormations();
+
+                    if (t < 1) {
+                        animFrame = requestAnimationFrame(step);
+                    } else {
+                        animFrame = null;
+                    }
+                }
+
+                animFrame = requestAnimationFrame(step);
+            });
+
             // --- Event Listeners ---
             offenseSelect.addEventListener('change', drawFormations);
+            playSelect.addEventListener('change', () => {
+                drawFormations();
+            });
             defenseSelect.addEventListener('change', drawFormations);
             window.addEventListener('resize', () => {
                 resizeCanvasToViewport();
